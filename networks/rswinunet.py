@@ -30,7 +30,7 @@ class RSwinUnet(nn.Module):
         img_size=224,
         in_chans=3,
         embed_dim=96,
-        depths=[2, 2, 6, 2],
+        depths=[2, 2, 3, 2],
         num_heads=[3, 6, 12, 24],
         attn_skip=False,
         use_checkpoint=False,
@@ -74,8 +74,7 @@ class RSwinUnet(nn.Module):
                                 use_checkpoint=config.TRAIN.USE_CHECKPOINT)
 
 
-        #self.conv_first = nn.Conv2d(in_chans, embed_dim*2//3, 3, 1, 1)
-        self.conv_first = nn.Conv2d(1, embed_dim*2//3, 3, 3, 3)
+        self.conv_first = nn.Conv2d(1, embed_dim*2//3, 3, 1, 1)
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
@@ -86,7 +85,7 @@ class RSwinUnet(nn.Module):
         patches_resolution = self.patch_embed.patches_resolution
         self.patches_resolution = patches_resolution
 
-        # absolute position embedding
+        # absolute position 
         if self.ape:
             self.absolute_pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
             trunc_normal_(self.absolute_pos_embed, std=.02)
@@ -162,14 +161,12 @@ class RSwinUnet(nn.Module):
 
         self.norm_out = norm_layer(embed_dim)
 
-        #self.conv_after_body = nn.Conv2d(embed_dim*2//3, embed_dim*2//3, 3, 1, 1)
-        self.conv_after_body = nn.Conv2d(embed_dim*2//3, embed_dim*2//3, 3, 1, 1)
+        self.conv_after_body = nn.Conv2d(1, embed_dim*2//3, 3, 1, 1)
 
 
         self.relu = nn.LeakyReLU(negative_slope=0.3, inplace=True)
 
-        #self.conv_last = nn.Conv2d(embed_dim*2//3, in_chans, 3, 1, 1)
-        self.conv_last = nn.Conv2d(embed_dim*2//3, in_chans, 3, 1, 1)
+        self.conv_last = nn.Conv2d(1, embed_dim*2//3, 3, 1, 1)
 
 
         self.apply(self._init_weights)
@@ -258,20 +255,28 @@ class RSwinUnet(nn.Module):
     def forward(self, x):
         
         _x = x
+        print("STEP1", x.shape)
         x = self.conv_first(x)
+        #print("---------Output size after conv_first:------------", x.shape)
+        print("STEP2")
         x = self.conv_after_body(self.forward_features(x)) + x
+        print("STEP3")
+        #print("-----------Output size after conv_after_body:-----------", x.shape)
         x = self.relu(x)
-        out = self.conv_last(x) + _x
-
+        print("STEP4")
+        #print("-----------Output size after ReLU:-------------", x.shape)
+        out = self.conv_last(x) #+ _x
+        print("conv_LAAASSSSST")
+        #print("-------------Final output size:----------", out.shape)
         return out
 
     
 
-    def forward(self, x):
-        if x.size()[1] == 1:
-            x = x.repeat(1,3,1,1)
-        logits = self.rswin_unet(x)
-        return logits
+    # def forward(self, x):
+    #     if x.size()[1] == 1:
+    #         x = x.repeat(1,3,1,1)
+    #     logits = self.rswin_unet(x)
+    #     return logits
 
     def load_from(self, config):
         pretrained_path = config.MODEL.PRETRAIN_CKPT
