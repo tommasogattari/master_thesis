@@ -160,7 +160,7 @@ class RSwinUnet(nn.Module):
             self.dec_layers.append(layer)
 
         self.patch_unembed = PatchUnEmbed(
-            img_size=img_size, patch_size=patch_size, embed_dim=embed_dim, out_chans=embed_dim*2//3,
+            img_size=img_size, patch_size=patch_size, embed_dim=embed_dim, out_chans=3,
             norm_layer=norm_layer if self.patch_norm else None
         )
 
@@ -270,10 +270,8 @@ class RSwinUnet(nn.Module):
         print("---------Output size AFTER conv_after_body(x):------------", x.shape)
         #x = self.conv_after_body(self.forward_features(x)) + x
         print("-----------Output size after conv_after_body:-----------", x.shape)
-        x = self.relu(x)
-        print("-----------Output size after ReLU:-------------", x.shape)
+        x = self.relu(x)     
         out = self.conv_last(x) + _x
-        
         print("Final output size:", out.shape)
         return out
 
