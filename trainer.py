@@ -117,11 +117,12 @@ def trainer_synapse(args, model, snapshot_path):
             for i_batch, sampled_batch in enumerate(trainloader):
                 image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
                 image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
-                #print("/////////////////////////"+str(image_batch.shape)+str(image_batch.dtype)+"//////////////////////")
                 outputs = model(image_batch)
+                # output.shape torch.Size([2, 3, 224, 224]) quando invece dovrebbe essere torch.Size([2, 9, 224, 224])
+                loss_ce = ce_loss(outputs, label_batch[:].long())
                 print("/////////////////////////Label batch shape: ", label_batch.shape)
                 print("/////////////////////////outputs: ", outputs.shape)
-                loss_ce = ce_loss(outputs, label_batch[:].long())
+                
                 # loss_ce = ce_loss(outputs, label_batch.flatten().long().to(device))
                 # loss_ce = ce_loss(outputs, label_batch.view(label_batch.size(0), -1).long())
                 loss_dice = dice_loss(outputs, label_batch, softmax=True)
