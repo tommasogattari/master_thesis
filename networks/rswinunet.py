@@ -42,6 +42,7 @@ class RSwinUnet(nn.Module):
         drop_path_rate=0.1,
         drop_rate=0.,
         patch_size=4,
+        kernel_size=3,
         norm_layer=nn.LayerNorm,
         num_classes=21843,
         patch_norm=True,
@@ -51,8 +52,11 @@ class RSwinUnet(nn.Module):
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.config = config
+        self.embed_dim=embed_dim
+        self.kernel_size=kernel_size
         self.patch_norm=patch_norm
         self.ape=ape
+        self.attn_skip=attn_skip
         self.mlp_ratio = mlp_ratio
         self.num_layers = len(depths)
         self.in_chans = in_chans
@@ -73,8 +77,9 @@ class RSwinUnet(nn.Module):
                                 patch_norm=config.MODEL.SWIN.PATCH_NORM,
                                 use_checkpoint=config.TRAIN.USE_CHECKPOINT)
 
+        
+        self.conv_first = nn.Conv2d(in_chans, 3, kernel_size=3, stride=1, padding=1)
 
-        self.conv_first = nn.Conv2d(1, embed_dim*2//3, 3, 1, 1)
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
@@ -161,12 +166,12 @@ class RSwinUnet(nn.Module):
 
         self.norm_out = norm_layer(embed_dim)
 
-        self.conv_after_body = nn.Conv2d(1, embed_dim*2//3, 3, 1, 1)
-
+        # self.conv_after_body = nn.Conv2d(embed_dim*2//3, embed_dim*2//3, 3, 1, 1)
+        self.conv_after_body = nn.Conv2d(in_chans, 3, kernel_size=3, stride=1, padding=1)
 
         self.relu = nn.LeakyReLU(negative_slope=0.3, inplace=True)
 
-        self.conv_last = nn.Conv2d(1, embed_dim*2//3, 3, 1, 1)
+        self.conv_last = nn.Conv2d(in_chans, 3, kernel_size=3, stride=1, padding=1)
 
 
         self.apply(self._init_weights)
@@ -255,28 +260,22 @@ class RSwinUnet(nn.Module):
     def forward(self, x):
         
         _x = x
-        print("STEP1", x.shape)
+        if x.size()[1] == 1:
+            x = x.repeat(1,3,1,1)
+        print("---------Output size before conv_first:------------", x.shape)
         x = self.conv_first(x)
-        #print("---------Output size after conv_first:------------", x.shape)
-        print("STEP2")
+        print("---------Output size AFTER conv_first:------------", x.shape)
         x = self.conv_after_body(self.forward_features(x)) + x
-        print("STEP3")
-        #print("-----------Output size after conv_after_body:-----------", x.shape)
+        # without '+x'RuntimeError: The size of tensor a (64) must match the size of tensor b (3) at non-singleton dimension 1
+        print("---------Output size AFTER conv_after_body(x):------------", x.shape)
+        #x = self.conv_after_body(self.forward_features(x)) + x
+        print("-----------Output size after conv_after_body:-----------", x.shape)
         x = self.relu(x)
-        print("STEP4")
-        #print("-----------Output size after ReLU:-------------", x.shape)
-        out = self.conv_last(x) #+ _x
-        print("conv_LAAASSSSST")
-        #print("-------------Final output size:----------", out.shape)
+        print("-----------Output size after ReLU:-------------", x.shape)
+        out = self.conv_last(x) + _x
+        
+        print("Final output size:", out.shape)
         return out
-
-    
-
-    # def forward(self, x):
-    #     if x.size()[1] == 1:
-    #         x = x.repeat(1,3,1,1)
-    #     logits = self.rswin_unet(x)
-    #     return logits
 
     def load_from(self, config):
         pretrained_path = config.MODEL.PRETRAIN_CKPT
