@@ -549,14 +549,14 @@ class PatchEmbed(nn.Module):
     r""" Image to Patch Embedding
 
     Args:
-        img_size (int): Image size.  Default: 226.
+        img_size (int): Image size.  Default: 224.
         patch_size (int): Patch token size. Default: 4.
         in_chans (int): Number of input image channels. Default: 3.
         embed_dim (int): Number of linear projection output channels. Default: 96.
         norm_layer (nn.Module, optional): Normalization layer. Default: None
     """
 
-    def __init__(self, img_size=226, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
+    def __init__(self, img_size=224, patch_size=4, in_chans=3, embed_dim=96, norm_layer=None):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -578,6 +578,7 @@ class PatchEmbed(nn.Module):
     def forward(self, x):
         B, C, H, W = x.shape
         # FIXME look at relaxing size constraints
+        print("FORWARD SWIN_TRANSFORMER", x.shape)
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
         x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
@@ -597,14 +598,14 @@ class PatchUnEmbed(nn.Module):
     r""" Image to Patch Embedding
 
     Args:
-        img_size (int): Image size.  Default: 226.
+        img_size (int): Image size.  Default: 224.
         patch_size (int): Patch token size. Default: 4.
         in_chans (int): Number of input image channels. Default: 3.
         embed_dim (int): Number of linear projection output channels. Default: 96.
         norm_layer (nn.Module, optional): Normalization layer. Default: None
     """
 
-    def __init__(self, img_size=226, patch_size=4, embed_dim=96, out_chans=3, norm_layer=None):
+    def __init__(self, img_size=224, patch_size=4, embed_dim=96, out_chans=3, norm_layer=None):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -630,6 +631,7 @@ class PatchUnEmbed(nn.Module):
             x = self.norm(x)
 
         B, L, C = x.shape
+        #print("FORWARD PAtchUNembed", x.shape)
         x = x.transpose(1, 2).unflatten(-1, self.patches_resolution)
         x = self.upconv(x)
     
@@ -669,7 +671,7 @@ class RSTB(nn.Module):
     def __init__(self, dim, input_resolution, depth, num_heads, window_size,
                  mlp_ratio=4., qkv_bias=True, drop=0., attn_drop=0.,
                  drop_path=0., norm_layer=nn.LayerNorm, downsample=None, upsample=None,
-                 use_checkpoint=False, img_size=226, patch_size=4, resi_connection='1conv',
+                 use_checkpoint=False, img_size=224, patch_size=4, resi_connection='1conv',
                  attn_in=False, attn_out=False):
         super(RSTB, self).__init__()
 
@@ -888,7 +890,7 @@ class SwinTransformerV2(nn.Module):
           https://arxiv.org/pdf/2103.14030
 
     Args:
-        img_size (int | tuple(int)): Input image size. Default 226
+        img_size (int | tuple(int)): Input image size. Default 224
         patch_size (int | tuple(int)): Patch size. Default: 4
         in_chans (int): Number of input image channels. Default: 3
         num_classes (int): Number of classes for classification head. Default: 1000
@@ -908,7 +910,7 @@ class SwinTransformerV2(nn.Module):
         pretrained_window_sizes (tuple(int)): Pretrained window sizes of each layer.
     """
 
-    def __init__(self, img_size=226, patch_size=4, in_chans=3, num_classes=1000,
+    def __init__(self, img_size=224, patch_size=4, in_chans=3, num_classes=1000,
                  embed_dim=96, depths=[2, 2, 6, 2], num_heads=[3, 6, 12, 24],
                  window_size=7, mlp_ratio=4., qkv_bias=True,
                  drop_rate=0., attn_drop_rate=0., drop_path_rate=0.1,
