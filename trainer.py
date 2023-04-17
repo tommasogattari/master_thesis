@@ -116,13 +116,15 @@ def trainer_synapse(args, model, snapshot_path):
                   unit='it', total=len(trainloader)) as pbar:
             for i_batch, sampled_batch in enumerate(trainloader):
                 image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
-                image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
+                image_batch, label_batch = image_batch.cpu(), label_batch.cpu()
+                print("IMAGE BATCH IMAGE BATCH",image_batch.shape)
+                print("IMAGE LABEL IMAGE LABEL",label_batch.shape)
                 outputs = model(image_batch)
                 # output.shape torch.Size([2, 3, 224, 224]) quando invece dovrebbe essere torch.Size([2, 9, 224, 224])
                 loss_ce = ce_loss(outputs, label_batch[:].long())
-                print("/////////////////////////Label batch shape: ", label_batch.shape)
-                print("/////////////////////////outputs: ", outputs.shape)
-                
+                #print("/////////////////////////Label batch shape: ", label_batch.shape)
+                #print("/////////////////////////outputs: ", outputs.shape)
+                print("/////////dopo loss_ce_--outputs_shape///////////"+str(outputs.shape))
                 # loss_ce = ce_loss(outputs, label_batch.flatten().long().to(device))
                 # loss_ce = ce_loss(outputs, label_batch.view(label_batch.size(0), -1).long())
                 loss_dice = dice_loss(outputs, label_batch, softmax=True)
