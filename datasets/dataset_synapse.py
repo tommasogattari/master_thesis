@@ -74,7 +74,7 @@ class resize(object):
         sample = {'image': image, 'label': label.long()}
         return sample
 
-
+# Synapse
 class Synapse_dataset(Dataset):
     def __init__(self, base_dir, list_dir, split, transform=None):
         self.transform = transform  # using transform in torch!
