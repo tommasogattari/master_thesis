@@ -1,5 +1,3 @@
-
-
 def str2int(value):
 
     return int(value)

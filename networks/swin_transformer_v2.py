@@ -158,7 +158,9 @@ class WindowAttention(nn.Module):
 
         # cosine attention
         attn = (F.normalize(q, dim=-1) @ F.normalize(k, dim=-1).transpose(-2, -1))
-        logit_scale = torch.clamp(self.logit_scale, max=torch.log(torch.tensor(1. / 0.01)).to('cuda:0')).exp()
+        #logit_scale = torch.clamp(self.logit_scale, max=torch.log(torch.tensor(1. / 0.01)).to('cuda:0')).exp()
+        logit_scale = torch.clamp(self.logit_scale, max=torch.log(torch.tensor(1. / 0.01)).to('cpu')).exp()
+
         attn = attn * logit_scale
 
         relative_position_bias_table = self.cpb_mlp(self.relative_coords_table).view(-1, self.num_heads)
@@ -570,6 +572,7 @@ class PatchEmbed(nn.Module):
         self.embed_dim = embed_dim
 
         self.proj = nn.Sequential(nn.Conv2d(in_chans, embed_dim, kernel_size=patch_size, stride=patch_size))
+        #print("//////////////////",self.proj)
         if norm_layer is not None:
             self.norm = norm_layer(embed_dim)
         else:
@@ -578,12 +581,12 @@ class PatchEmbed(nn.Module):
     def forward(self, x):
         B, C, H, W = x.shape
         # FIXME look at relaxing size constraints
-        print("FORWARD SWIN_TRANSFORMER", x.shape)
+        # print("FORWARD SWIN_TRANSFORMER", x.shape)
         assert H == self.img_size[0] and W == self.img_size[1], \
             f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
-        print("proj PRIMA", x.shape)
+        # print("proj PRIMA", x.shape)
         x = self.proj(x).flatten(2).transpose(1, 2)  # B Ph*Pw C
-        print("proj DOPO", x.shape)
+        # print("proj DOPO", x.shape)
         if self.norm is not None:
             x = self.norm(x)
         return x

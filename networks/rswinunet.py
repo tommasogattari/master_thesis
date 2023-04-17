@@ -78,7 +78,7 @@ class RSwinUnet(nn.Module):
                                 use_checkpoint=config.TRAIN.USE_CHECKPOINT)
 
         
-        self.conv_first = nn.Conv2d(in_chans, 3, kernel_size=3, stride=1, padding=1)
+        self.conv_first = nn.Conv2d(in_chans, embed_dim*2//3, 3, 1, 1)
 
 
         # split image into non-overlapping patches
@@ -166,12 +166,12 @@ class RSwinUnet(nn.Module):
 
         self.norm_out = norm_layer(embed_dim)
 
-        # self.conv_after_body = nn.Conv2d(embed_dim*2//3, embed_dim*2//3, 3, 1, 1)
-        self.conv_after_body = nn.Conv2d(in_chans, 3, kernel_size=3, stride=1, padding=1)
+        #self.conv_after_body = nn.Conv2d(embed_dim*2//3, 9, 3, 1, 1)
+        self.conv_after_body = nn.Conv2d(embed_dim*2//3, embed_dim*2//3, 3, 1, 1)
 
         self.relu = nn.LeakyReLU(negative_slope=0.3, inplace=True)
 
-        self.conv_last = nn.Conv2d(in_chans, 3, kernel_size=3, stride=1, padding=1)
+        self.conv_last = nn.Conv2d(embed_dim*2//3, in_chans, 3, 1, 1)
 
 
         self.apply(self._init_weights)
@@ -268,12 +268,11 @@ class RSwinUnet(nn.Module):
         x = self.conv_after_body(self.forward_features(x)) + x
         # without '+x'RuntimeError: The size of tensor a (64) must match the size of tensor b (3) at non-singleton dimension 1
         print("---------Output size AFTER conv_after_body(x):------------", x.shape)
-        #x = self.conv_after_body(self.forward_features(x)) + x
+        
         print("-----------Output size after conv_after_body:-----------", x.shape)
         x = self.relu(x)     
-        out = self.conv_last(x) + _x
-        print("Final output size:", out.shape)
-        return out
+        print("Final output size:", x.shape)
+        return x
 
     def load_from(self, config):
         pretrained_path = config.MODEL.PRETRAIN_CKPT
