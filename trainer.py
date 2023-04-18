@@ -9,6 +9,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+import wandb
 from tensorboardX import SummaryWriter
 from torch.nn.modules.loss import CrossEntropyLoss
 from torch.utils.data import DataLoader, sampler
@@ -95,8 +96,8 @@ def trainer_synapse(args, model, snapshot_path):
     # ---------- training ----------
     ce_loss = CrossEntropyLoss()
     dice_loss = DiceLoss(num_classes)
-    # optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
-    optimizer = optim.AdamW(model.parameters(), lr=base_lr, weight_decay=5E-3)
+    optimizer = optim.SGD(model.parameters(), lr=base_lr, momentum=0.9, weight_decay=0.0001)
+    #optimizer = optim.AdamW(model.parameters(), lr=base_lr, weight_decay=5E-3)
     # 创建学习率更新策略，这里是每个step更新一次(不是每个epoch)
     lr_scheduler = create_lr_scheduler(optimizer, len(trainloader), args.max_epochs, warmup=True)
     writer = SummaryWriter(snapshot_path + '/log')
@@ -108,7 +109,7 @@ def trainer_synapse(args, model, snapshot_path):
     #iterator = tqdm(, ncols=70)
     # save best model
     best_performance = 0.0
-
+    wandb.init(project="Mix")
     for epoch_num in range(max_epoch):
         total_loss = 0
         model.train()
@@ -117,14 +118,15 @@ def trainer_synapse(args, model, snapshot_path):
             for i_batch, sampled_batch in enumerate(trainloader):
                 image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
                 image_batch, label_batch = image_batch.cpu(), label_batch.cpu()
-                print("IMAGE BATCH IMAGE BATCH",image_batch.shape)
-                print("IMAGE LABEL IMAGE LABEL",label_batch.shape)
+                # print("IMAGE BATCH IMAGE BATCH",image_batch.shape)
+                # print("IMAGE LABEL IMAGE LABEL",label_batch.shape)
                 outputs = model(image_batch)
+                #print("/////////prima loss_ce_--outputs_shape///////////"+str(outputs.shape))
                 # output.shape torch.Size([2, 3, 224, 224]) quando invece dovrebbe essere torch.Size([2, 9, 224, 224])
                 loss_ce = ce_loss(outputs, label_batch[:].long())
-                #print("/////////////////////////Label batch shape: ", label_batch.shape)
-                #print("/////////////////////////outputs: ", outputs.shape)
-                print("/////////dopo loss_ce_--outputs_shape///////////"+str(outputs.shape))
+                # print("/////////////////////////Label batch shape: ", label_batch.shape)
+                # print("/////////////////////////outputs: ", outputs.shape)
+                #print("/////////dopo loss_ce_--outputs_shape///////////"+str(outputs.shape))
                 # loss_ce = ce_loss(outputs, label_batch.flatten().long().to(device))
                 # loss_ce = ce_loss(outputs, label_batch.view(label_batch.size(0), -1).long())
                 loss_dice = dice_loss(outputs, label_batch, softmax=True)
@@ -146,6 +148,7 @@ def trainer_synapse(args, model, snapshot_path):
                 writer.add_scalar('info/total_loss', loss, iter_num)
                 writer.add_scalar('info/loss_ce', loss_ce, iter_num)
 
+
                 #logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
 
                 pbar.set_postfix(loss=total_loss / (i_batch + 1), lr=lr_)
@@ -159,6 +162,7 @@ def trainer_synapse(args, model, snapshot_path):
                     writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
                     labs = label_batch[1, ...].unsqueeze(0) * 50
                     writer.add_image('train/GroundTruth', labs, iter_num)
+        wandb.log({"epoch": epoch_num, "loss": loss, "lr": lr})
         # print(lr_)
         # ---------- Validation ----------
         # if (epoch_num > 10) and (epoch_num + 1) % 5 == 0:
@@ -203,6 +207,6 @@ def trainer_synapse(args, model, snapshot_path):
             logging.info("save model to {}".format(save_mode_path))
             #iterator.close()
             break
-
+           
     writer.close()
     return "Training Finished!"
