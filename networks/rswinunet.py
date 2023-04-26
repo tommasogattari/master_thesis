@@ -1,5 +1,5 @@
 from collections import OrderedDict
-from ignite.metrics import SSIM
+from ignite.metrics import *
 import numpy as np
 import pytorch_lightning as pl
 import torch
@@ -83,7 +83,7 @@ class RSwinUnet(nn.Module):
 
         # split image into non-overlapping patches
         self.patch_embed = PatchEmbed(
-            img_size=img_size, patch_size=patch_size, in_chans=3, embed_dim=embed_dim,
+            img_size=img_size, patch_size=patch_size, in_chans=embed_dim*2//3, embed_dim=embed_dim,
             norm_layer=norm_layer if self.patch_norm else None
         )
         num_patches = self.patch_embed.num_patches
@@ -160,7 +160,7 @@ class RSwinUnet(nn.Module):
             self.dec_layers.append(layer)
 
         self.patch_unembed = PatchUnEmbed(
-            img_size=img_size, patch_size=patch_size, embed_dim=embed_dim, out_chans=3,
+            img_size=img_size, patch_size=patch_size, embed_dim=embed_dim, out_chans=embed_dim*2//3,
             norm_layer=norm_layer if self.patch_norm else None
         )
 
@@ -171,7 +171,7 @@ class RSwinUnet(nn.Module):
 
         self.relu = nn.LeakyReLU(negative_slope=0.3, inplace=True)
 
-        self.conv_last = nn.Conv2d(embed_dim*2//3, in_chans, 3, 1, 1)
+        self.conv_last = nn.Conv2d(embed_dim*2//3, 9, 3, 1, 1)
 
 
         self.apply(self._init_weights)
@@ -262,16 +262,17 @@ class RSwinUnet(nn.Module):
         _x = x
         if x.size()[1] == 1:
             x = x.repeat(1,3,1,1)
-        print("---------Output size before conv_first:------------", x.shape)
+        #print("---------Output size before conv_first:------------", x.shape)
         x = self.conv_first(x)
-        print("---------Output size AFTER conv_first:------------", x.shape)
+        #print("---------Output size AFTER conv_first:------------", x.shape)
         x = self.conv_after_body(self.forward_features(x)) + x
         # without '+x'RuntimeError: The size of tensor a (64) must match the size of tensor b (3) at non-singleton dimension 1
-        print("---------Output size AFTER conv_after_body(x):------------", x.shape)
-        
-        print("-----------Output size after conv_after_body:-----------", x.shape)
-        x = self.relu(x)     
-        print("Final output size:", x.shape)
+        #print("---------Output size AFTER conv_after_body(x):------------", x.shape)
+        x = self.conv_last(x)
+        #print("---------Output size AFTER conv_last(x):------------", x.shape)
+        #print("-----------Output size after conv_after_body:-----------", x.shape)
+        #x = self.relu(x)     
+        #print("Final output size:", x.shape)
         return x
 
     def load_from(self, config):
