@@ -12,7 +12,7 @@ from tqdm import tqdm
 from datasets.dataset_synapse import Synapse_dataset
 #from datasets.dataset_ACDC import ACDCdataset
 from utils import test_single_volume
-from networks.vision_transformer import CS_Unet as ViT_seg
+from networks.rswinunet import RSwinUnet as ViT_seg
 from trainer import trainer_synapse
 from config import get_config
 import utils
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         'Synapse': {
             'Dataset': Synapse_dataset,
             'volume_path': args.volume_path,
-            'list_dir': 'C:/Users/ambur/OneDrive/Desktop/CS_UNET119/CS-Unet/lists/lists_Synapse',
+            'list_dir': 'C:/Users/ambur/OneDrive/Desktop/mix_2/lists0105/lists_Synapse',
             'num_classes': 9,
             'z_spacing': 1,
         }
@@ -118,9 +118,10 @@ if __name__ == "__main__":
     args.z_spacing = dataset_config[dataset_name]['z_spacing']
     args.is_pretrain = True
 
-    net = ViT_seg(config, img_size=args.img_size, num_classes=args.num_classes).cpu()
+    net = ViT_seg(config, img_size=args.img_size, num_classes=args.num_classes).cuda()
 
-    snapshot = os.path.join(args.output_dir, 'epoch_119.pth')
+    # snaphost = '/content/drive/MyDrive/mix/output/last_epoch.pth'
+    snapshot = os.path.join(args.output_dir, 'mix2_epoch.pth')
     if not os.path.exists(snapshot): snapshot = snapshot.replace('best_model', 'epoch_'+str(args.max_epochs-1))
     msg = net.load_state_dict(torch.load(snapshot))
     print("self trained swin unet",msg)

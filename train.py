@@ -89,7 +89,7 @@ if __name__ == "__main__":
         'Synapse': {
             'root_path': args.root_path,
             'volume_path': args.volume_path,
-            'list_dir': 'C:/Users/ambur/OneDrive/Desktop/project/V1/lists/lists_Synapse',
+            'list_dir': 'C:/Users/ambur/OneDrive/Desktop/mix_2/lists0105/lists_Synapse',
             'num_classes': 9,
             'z_spacing': 1,
         }

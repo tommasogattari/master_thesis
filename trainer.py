@@ -19,6 +19,9 @@ from torchvision import transforms
 from utils import test_single_volume
 from metrics import dice, cal_hausdorff_distance
 
+
+#wandb_dir = "/content/drive/MyDrive/wandb"
+#wandb.setup(wandb_dir)
 def get_mean_std(loader):
     # var[X] = E[X**2] - E[X]**2 方差公式， var[]代表方差，E[]表示期望(平均值)
     channels_sum, channels_sqrd_sum, num_batches = 0, 0, 0
@@ -109,7 +112,7 @@ def trainer_synapse(args, model, snapshot_path):
     #iterator = tqdm(, ncols=70)
     # save best model
     best_performance = 0.0
-    wandb.init(project="Mix")
+    #wandb.init(project="ConvSwinMix")
     for epoch_num in range(max_epoch):
         total_loss = 0
         model.train()
@@ -141,16 +144,16 @@ def trainer_synapse(args, model, snapshot_path):
                 # lr_ = base_lr * (1.0 - iter_num / max_iterations) ** 0.9
                 # for param_group in optimizer.param_groups:
                 #     param_group['lr'] = lr_
-
+               
                 total_loss += loss.item()
                 iter_num = iter_num + 1
                 writer.add_scalar('info/lr', lr_, iter_num)
                 writer.add_scalar('info/total_loss', loss, iter_num)
                 writer.add_scalar('info/loss_ce', loss_ce, iter_num)
-
+                
 
                 #logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
-
+                #wandb.log({"epoch_num":epoch_num,"iter_num":iter_num,"loss": loss, "lr": lr_, "loss_ce": loss_ce, "total_loss": total_loss})
                 pbar.set_postfix(loss=total_loss / (i_batch + 1), lr=lr_)
                 pbar.update()
 
@@ -162,7 +165,6 @@ def trainer_synapse(args, model, snapshot_path):
                     writer.add_image('train/Prediction', outputs[1, ...] * 50, iter_num)
                     labs = label_batch[1, ...].unsqueeze(0) * 50
                     writer.add_image('train/GroundTruth', labs, iter_num)
-        wandb.log({"epoch": epoch_num, "loss": loss, "lr": lr})
         # print(lr_)
         # ---------- Validation ----------
         # if (epoch_num > 10) and (epoch_num + 1) % 5 == 0:
@@ -194,19 +196,24 @@ def trainer_synapse(args, model, snapshot_path):
                     save_mode_path = os.path.join(snapshot_path, 'best_epoch_' + str(epoch_num) + '.pth')
                     torch.save(model.state_dict(), save_mode_path)
         # ---------- save results ----------
-        save_interval = 10  # int(max_epoch/6)
-        if epoch_num > int(max_epoch / 2 +20) and (epoch_num + 1) % save_interval == 0:
-            save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
-            torch.save(model.state_dict(), save_mode_path)
-            logging.info("save model to {}".format(save_mode_path))
+        # save_interval = 10  # int(max_epoch/6)
+        # if epoch_num > int(max_epoch / 2 +20) and (epoch_num + 1) % save_interval == 0:
+        #     save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
+        #     torch.save(model.state_dict(), save_mode_path)
+        #     logging.info("save model to {}".format(save_mode_path))
         
-        if epoch_num >= max_epoch - 1:
-            print(best_performance)
-            save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
-            torch.save(model.state_dict(), save_mode_path)
-            logging.info("save model to {}".format(save_mode_path))
-            #iterator.close()
-            break
-           
+       
+        save_mode_path = os.path.join(snapshot_path, '0_epoch.pth')
+        torch.save(model.state_dict(), save_mode_path)
+        logging.info("save model to {}".format(save_mode_path))
+        
+        # if epoch_num >= max_epoch - 1:
+        #     print(best_performance)
+        #     save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
+        #     torch.save(model.state_dict(), save_mode_path)
+        #     logging.info("save model to {}".format(save_mode_path))
+        #     #iterator.close()
+        #     break
+    
     writer.close()
     return "Training Finished!"

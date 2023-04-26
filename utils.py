@@ -78,8 +78,9 @@ class DiceLoss(nn.Module):
         return loss
 
     def forward(self, inputs, target, weight=None, softmax=False):
+        #print("inputs SIZE before softmax",inputs.size())
         if softmax:
-            inputs = torch.softmax(inputs, dim=3)
+            inputs = torch.softmax(inputs, dim=1)
         target = self._one_hot_encoder(target)
         if weight is None:
             weight = [1] * self.n_classes
@@ -98,9 +99,9 @@ def calculate_metric_percase(output, target):
     smooth = 1e-5  
 
     if torch.is_tensor(output):
-        output = torch.sigmoid(output).data.cpu().numpy()
+        output = torch.sigmoid(output).data.cuda().numpy()
     if torch.is_tensor(target):
-        target = target.data.cpu().numpy()
+        target = target.data.cuda().numpy()
     if output.sum() > 0 and target.sum() > 0:
         hd = metric.binary.hd(output, target)
     else:
@@ -136,7 +137,7 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
             x, y = slice.shape[0], slice.shape[1]
             if x != patch_size[0] or y != patch_size[1]:
                 slice = zoom(slice, (patch_size[0] / x, patch_size[1] / y), order=3)  # previous using 0
-            input = torch.from_numpy(slice).unsqueeze(0).unsqueeze(0).float().cpu()
+            input = torch.from_numpy(slice).unsqueeze(0).unsqueeze(0).float().cuda()
             net.eval()
             with torch.no_grad():
                 outputs = net(input)
@@ -152,11 +153,11 @@ def test_single_volume(image, label, net, classes, patch_size=[256, 256], test_s
                 prediction[ind] = pred
     else:
         input = torch.from_numpy(image).unsqueeze(
-            0).unsqueeze(0).float().cpu()
+            0).unsqueeze(0).float().cuda()
         net.eval()
         with torch.no_grad():
             out = torch.argmax(torch.softmax(net(input), dim=1), dim=1).squeeze(0)
-            prediction = out.cpu().detach().numpy()
+            prediction = out.cuda().detach().numpy()
     metric_list = []
     for i in range(1, classes):
         metric_list.append(calculate_metric_percase(prediction == i, label == i))
