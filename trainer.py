@@ -20,8 +20,8 @@ from utils import test_single_volume
 from metrics import dice, cal_hausdorff_distance
 
 
-#wandb_dir = "/content/drive/MyDrive/wandb"
-#wandb.setup(wandb_dir)
+wandb_dir = "/content/drive/MyDrive/wandb"
+wandb.setup(wandb_dir)
 def get_mean_std(loader):
     # var[X] = E[X**2] - E[X]**2 方差公式， var[]代表方差，E[]表示期望(平均值)
     channels_sum, channels_sqrd_sum, num_batches = 0, 0, 0
@@ -89,7 +89,7 @@ def trainer_synapse(args, model, snapshot_path):
     def worker_init_fn(worker_id):
         random.seed(args.seed + worker_id)
 
-    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=0, pin_memory=True,
+    trainloader = DataLoader(db_train, batch_size=batch_size, shuffle=True, num_workers=8, pin_memory=True,
                              worker_init_fn=worker_init_fn)
     # print(get_mean_std(trainloader))
     # quit()
@@ -112,7 +112,7 @@ def trainer_synapse(args, model, snapshot_path):
     #iterator = tqdm(, ncols=70)
     # save best model
     best_performance = 0.0
-    #wandb.init(project="ConvSwinMix")
+    wandb.init(project="ConvSwinMix_modificato")
     for epoch_num in range(max_epoch):
         total_loss = 0
         model.train()
@@ -120,7 +120,7 @@ def trainer_synapse(args, model, snapshot_path):
                   unit='it', total=len(trainloader)) as pbar:
             for i_batch, sampled_batch in enumerate(trainloader):
                 image_batch, label_batch = sampled_batch['image'], sampled_batch['label']
-                image_batch, label_batch = image_batch.cpu(), label_batch.cpu()
+                image_batch, label_batch = image_batch.cuda(), label_batch.cuda()
                 # print("IMAGE BATCH IMAGE BATCH",image_batch.shape)
                 # print("IMAGE LABEL IMAGE LABEL",label_batch.shape)
                 outputs = model(image_batch)
@@ -153,7 +153,7 @@ def trainer_synapse(args, model, snapshot_path):
                 
 
                 #logging.info('iteration %d : loss : %f, loss_ce: %f' % (iter_num, loss.item(), loss_ce.item()))
-                #wandb.log({"epoch_num":epoch_num,"iter_num":iter_num,"loss": loss, "lr": lr_, "loss_ce": loss_ce, "total_loss": total_loss})
+                wandb.log({"epoch_num":epoch_num,"iter_num":iter_num,"loss": loss, "lr": lr_, "loss_ce": loss_ce, "total_loss": total_loss})
                 pbar.set_postfix(loss=total_loss / (i_batch + 1), lr=lr_)
                 pbar.update()
 
@@ -196,24 +196,24 @@ def trainer_synapse(args, model, snapshot_path):
                     save_mode_path = os.path.join(snapshot_path, 'best_epoch_' + str(epoch_num) + '.pth')
                     torch.save(model.state_dict(), save_mode_path)
         # ---------- save results ----------
-        # save_interval = 10  # int(max_epoch/6)
-        # if epoch_num > int(max_epoch / 2 +20) and (epoch_num + 1) % save_interval == 0:
-        #     save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
-        #     torch.save(model.state_dict(), save_mode_path)
-        #     logging.info("save model to {}".format(save_mode_path))
+        #save_interval = 10  # int(max_epoch/6)
+        #if epoch_num > int(max_epoch / 2 +20) and (epoch_num + 1) % save_interval == 0:
+        #    save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
+        #    torch.save(model.state_dict(), save_mode_path)
+        #    logging.info("save model to {}".format(save_mode_path))
         
        
-        save_mode_path = os.path.join(snapshot_path, '0_epoch.pth')
+        save_mode_path = os.path.join(snapshot_path, 'last_epoch.pth')
         torch.save(model.state_dict(), save_mode_path)
         logging.info("save model to {}".format(save_mode_path))
         
-        # if epoch_num >= max_epoch - 1:
-        #     print(best_performance)
-        #     save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
-        #     torch.save(model.state_dict(), save_mode_path)
-        #     logging.info("save model to {}".format(save_mode_path))
-        #     #iterator.close()
-        #     break
+        #if epoch_num >= max_epoch - 1:
+         #   print(best_performance)
+          #  save_mode_path = os.path.join(snapshot_path, 'epoch_' + str(epoch_num) + '.pth')
+           # torch.save(model.state_dict(), save_mode_path)
+            #logging.info("save model to {}".format(save_mode_path))
+            #iterator.close()
+            #break
     
     writer.close()
     return "Training Finished!"

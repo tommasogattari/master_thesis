@@ -111,7 +111,7 @@ def make_one_hot(input, num_classes):
     shape = np.array(input.shape)
     shape[1] = num_classes
     shape = tuple(shape)
-    result = torch.zeros(shape).scatter_(1, input.cpu().long(), 1)
+    result = torch.zeros(shape).scatter_(1, input.cuda().long(), 1)
     # result = result.scatter_(1, input.cpu(), 1)
 
     return result

@@ -89,7 +89,7 @@ if __name__ == "__main__":
         'Synapse': {
             'root_path': args.root_path,
             'volume_path': args.volume_path,
-            'list_dir': 'C:/Users/ambur/OneDrive/Desktop/mix_2/lists0105/lists_Synapse',
+            'list_dir': '/content/drive/MyDrive/mix_2/lists/lists_Synapse',
             'num_classes': 9,
             'z_spacing': 1,
         }
@@ -105,7 +105,7 @@ if __name__ == "__main__":
 
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
-    net = ViT_seg(config, img_size=args.img_size, num_classes=args.num_classes).cpu()
+    net = ViT_seg(config, img_size=args.img_size, num_classes=args.num_classes).cuda()
 
     # net.load_from(config)
     if args.dataset == "Synapse":

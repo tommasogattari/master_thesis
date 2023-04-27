@@ -105,7 +105,7 @@ if __name__ == "__main__":
         'Synapse': {
             'Dataset': Synapse_dataset,
             'volume_path': args.volume_path,
-            'list_dir': 'C:/Users/ambur/OneDrive/Desktop/mix_2/lists0105/lists_Synapse',
+            'list_dir': '/content/drive/MyDrive/mix_2/lists/lists_Synapse',
             'num_classes': 9,
             'z_spacing': 1,
         }
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     net = ViT_seg(config, img_size=args.img_size, num_classes=args.num_classes).cuda()
 
     # snaphost = '/content/drive/MyDrive/mix/output/last_epoch.pth'
-    snapshot = os.path.join(args.output_dir, 'mix2_epoch.pth')
+    snapshot = os.path.join(args.output_dir, 'last_epoch.pth')
     if not os.path.exists(snapshot): snapshot = snapshot.replace('best_model', 'epoch_'+str(args.max_epochs-1))
     msg = net.load_state_dict(torch.load(snapshot))
     print("self trained swin unet",msg)
