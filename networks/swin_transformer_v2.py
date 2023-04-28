@@ -11,24 +11,36 @@ import torch.nn.functional as F
 import torch.utils.checkpoint as checkpoint
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import numpy as np
-
+from einops.layers.torch import Rearrange
 
 class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):
+    def __init__(self, dim, drop_path=0.2, layer_scale_init_value=0.7):
         super().__init__()
-        out_features = out_features or in_features
-        hidden_features = hidden_features or in_features
-        self.fc1 = nn.Linear(in_features, hidden_features)
-        self.act = act_layer()
-        self.fc2 = nn.Linear(hidden_features, out_features)
-        self.drop = nn.Dropout(drop)
+        self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim)  # depthwise conv 7,3  5,2  3,1
+        self.norm = nn.LayerNorm(dim, eps=1e-6)
+        self.pwconv1 = nn.Conv2d(dim, 4 * dim, kernel_size=1)
+        self.act = nn.GELU()
+        self.pwconv2 = nn.Conv2d(4 * dim, dim, kernel_size=1)  # nn.Linear(4 * dim, dim)
+        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)),
+                                  requires_grad=True) if layer_scale_init_value > 0 else None
+        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x):
-        x = self.fc1(x)
+
+        input = x  # B, H, W, C
+        print("Input________________shape:", x.shape)
+        x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
+        x = self.dwconv(x)
+        x = x.permute(0, 2, 3, 1)
+        x = self.norm(x)
+        x = x.permute(0, 3, 1, 2)
+        x = self.pwconv1(x)
         x = self.act(x)
-        x = self.drop(x)
-        x = self.fc2(x)
-        x = self.drop(x)
+        x = self.pwconv2(x)
+        x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
+        if self.gamma is not None:
+            x = self.gamma * x
+        x = input + self.drop_path(x)  # (N, H, W, C)
         return x
 
 
@@ -70,142 +82,80 @@ class WindowAttention(nn.Module):
         window_size (tuple[int]): The height and width of the window.
         num_heads (int): Number of attention heads.
         qkv_bias (bool, optional):  If True, add a learnable bias to query, key, value. Default: True
+        qk_scale (float | None, optional): Override default qk scale of head_dim ** -0.5 if set
         attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
-        pretrained_window_size (tuple[int]): The height and width of the window in pre-training.
     """
 
-    def __init__(self, dim, window_size, num_heads, qkv_bias=True, attn_drop=0., proj_drop=0.,
-                 pretrained_window_size=[0, 0], attn_in=False, attn_out=False):
+    def __init__(self, dim, window_size, num_heads, qkv_bias=True, qk_scale=None, attn_drop=0., proj_drop=0.):
 
         super().__init__()
         self.dim = dim
         self.window_size = window_size  # Wh, Ww
-        self.pretrained_window_size = pretrained_window_size
         self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim ** -0.5
 
-        self.logit_scale = nn.Parameter(torch.log(10 * torch.ones((num_heads, 1, 1))), requires_grad=True)
+        self.conv_proj_q = self._build_projection(dim, kernel_size=3, stride=1, padding=1)
+        self.conv_proj_k = self._build_projection(dim, kernel_size=3, stride=1, padding=1)
+        self.conv_proj_v = self._build_projection(dim, kernel_size=3, stride=1, padding=1)
 
-        # mlp to generate continuous relative position bias
-        self.cpb_mlp = nn.Sequential(nn.Linear(2, 512, bias=True),
-                                     nn.ReLU(inplace=True),
-                                     nn.Linear(512, num_heads, bias=False))
-
-        # get relative_coords_table
-        relative_coords_h = torch.arange(-(self.window_size[0] - 1), self.window_size[0], dtype=torch.float32)
-        relative_coords_w = torch.arange(-(self.window_size[1] - 1), self.window_size[1], dtype=torch.float32)
-        relative_coords_table = torch.stack(
-            torch.meshgrid([relative_coords_h,
-                            relative_coords_w])).permute(1, 2, 0).contiguous().unsqueeze(0)  # 1, 2*Wh-1, 2*Ww-1, 2
-        if pretrained_window_size[0] > 0:
-            relative_coords_table[:, :, :, 0] /= (pretrained_window_size[0] - 1)
-            relative_coords_table[:, :, :, 1] /= (pretrained_window_size[1] - 1)
-        else:
-            relative_coords_table[:, :, :, 0] /= (self.window_size[0] - 1)
-            relative_coords_table[:, :, :, 1] /= (self.window_size[1] - 1)
-        relative_coords_table *= 8  # normalize to -8, 8
-        relative_coords_table = torch.sign(relative_coords_table) * torch.log2(
-            torch.abs(relative_coords_table) + 1.0) / np.log2(8)
-
-        self.register_buffer("relative_coords_table", relative_coords_table)
-
-        # get pair-wise relative position index for each token inside the window
-        coords_h = torch.arange(self.window_size[0])
-        coords_w = torch.arange(self.window_size[1])
-        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
-        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
-        relative_coords[:, :, 0] += self.window_size[0] - 1  # shift to start from 0
-        relative_coords[:, :, 1] += self.window_size[1] - 1
-        relative_coords[:, :, 0] *= 2 * self.window_size[1] - 1
-        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
-        self.register_buffer("relative_position_index", relative_position_index)
-
-        self.qkv = nn.Linear(dim, dim * 3, bias=False)
-        if qkv_bias:
-            self.q_bias = nn.Parameter(torch.zeros(dim))
-            self.v_bias = nn.Parameter(torch.zeros(dim))
-        else:
-            self.q_bias = None
-            self.v_bias = None
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
+        self.proj = nn.Sequential(nn.Conv2d(dim, dim, kernel_size=3, padding=1, stride=1, bias=False, groups=dim), nn.GELU())
         self.proj_drop = nn.Dropout(proj_drop)
-        self.softmax = nn.Softmax(dim=-1)
-        
-        self.attn_in = attn_in
-        self.attn_out = attn_out
-        if attn_in:
-            self.lambda_attn = torch.nn.Parameter(torch.Tensor([0.25]))
 
-    def forward(self, x, mask=None, prev_attn=None):
+        self.softmax = nn.Softmax(dim=-1)
+
+    def _build_projection(self, dim_in, kernel_size=3, stride=1, padding=1):
+        proj = nn.Sequential(
+            nn.Conv2d(dim_in, dim_in, kernel_size, padding=padding, stride=stride, bias=False, groups=dim_in),
+            Rearrange('b c h w -> b (h w) c'),
+            nn.LayerNorm(dim_in))
+        return proj
+
+    def forward(self, x, mask=None):
         """
         Args:
             x: input features with shape of (num_windows*B, N, C)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
         """
+        # [batch_size*num_windows, Mh*Mw, total_embed_dim]
         B_, N, C = x.shape
-        qkv_bias = None
-        if self.q_bias is not None:
-            qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
-        qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
-        qkv = qkv.reshape(B_, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        Mh = int(N ** .5)
+        x = x.view(B_, Mh, Mh, C).permute(0, 3, 1, 2)  # [batch_size*num_windows, Mh, Mw, total_embed_dim]
+        # when we use conv the shape should be B, C, H, W. so use permute
+        q = self.conv_proj_q(x).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1,
+                                                                                          3)  # [batch_size*num_windows, num_heads, Mh*Mw, embed_dim_per_head]
+        k = self.conv_proj_k(x).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
+        v = self.conv_proj_v(x).reshape(B_, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
 
-        # cosine attention
-        attn = (F.normalize(q, dim=-1) @ F.normalize(k, dim=-1).transpose(-2, -1))
-        logit_scale = torch.clamp(self.logit_scale, max=torch.log(torch.tensor(1. / 0.01)).to('cuda:0')).exp()
-        #logit_scale = torch.clamp(self.logit_scale, max=torch.log(torch.tensor(1. / 0.01)).to('cpu')).exp()
 
-        attn = attn * logit_scale
+        q = q * self.scale
+        attn = (q @ k.transpose(-2, -1))
+        # transpose: -> [batch_size*num_windows, num_heads, embed_dim_per_head, Mh*Mw]
+        # @:multiply -> [batch_size*num_windows, num_heads, Mh*Mw, Mh*Mw]
 
-        relative_position_bias_table = self.cpb_mlp(self.relative_coords_table).view(-1, self.num_heads)
-        relative_position_bias = relative_position_bias_table[self.relative_position_index.view(-1)].view(
-            self.window_size[0] * self.window_size[1], self.window_size[0] * self.window_size[1], -1)  # Wh*Ww,Wh*Ww,nH
-        relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
-        relative_position_bias = 16 * torch.sigmoid(relative_position_bias)
-        attn = attn + relative_position_bias.unsqueeze(0)
 
         if mask is not None:
-            nW = mask.shape[0]
+            # mask: [nW, Mh*Mw, Mh*Mw]
+            nW = mask.shape[0]  # num_windows
+            # attn.view: [batch_size, num_windows, num_heads, Mh*Mw, Mh*Mw]
+            # mask.unsqueeze: [1, nW, 1, Mh*Mw, Mh*Mw]
             attn = attn.view(B_ // nW, nW, self.num_heads, N, N) + mask.unsqueeze(1).unsqueeze(0)
             attn = attn.view(-1, self.num_heads, N, N)
-            
-        if self.attn_out:
-            attn_before_softmax = attn
-            
-        if self.attn_in and prev_attn is not None:
-            attn = self.lambda_attn*prev_attn + (1 - self.lambda_attn)*attn
-            
-        attn = self.softmax(attn)
-
+            attn = self.softmax(attn)
+        else:
+            attn = self.softmax(attn)
         attn = self.attn_drop(attn)
-
-        x = (attn @ v).transpose(1, 2).reshape(B_, N, C)
+        x = (attn @ v).transpose(2, 3).reshape(B_, C, Mh, Mh)
         x = self.proj(x)
+        x = x.reshape(B_, C, N).transpose(1, 2)
         x = self.proj_drop(x)
-        
-        if self.attn_out:
-            x = (x, attn_before_softmax)
+
         return x
 
     def extra_repr(self) -> str:
-        return f'dim={self.dim}, window_size={self.window_size}, ' \
-               f'pretrained_window_size={self.pretrained_window_size}, num_heads={self.num_heads}'
-
-    def flops(self, N):
-        # calculate flops for 1 window with token length of N
-        flops = 0
-        # qkv = self.qkv(x)
-        flops += N * self.dim * 3 * self.dim
-        # attn = (q @ k.transpose(-2, -1))
-        flops += self.num_heads * N * (self.dim // self.num_heads) * N
-        #  x = (attn @ v)
-        flops += self.num_heads * N * N * (self.dim // self.num_heads)
-        # x = self.proj(x)
-        flops += N * self.dim * self.dim
-        return flops
+        return f'dim={self.dim}, window_size={self.window_size}, num_heads={self.num_heads}'
 
 
 class SwinTransformerBlock(nn.Module):
@@ -249,14 +199,16 @@ class SwinTransformerBlock(nn.Module):
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
             dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
-            qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop,
-            pretrained_window_size=to_2tuple(pretrained_window_size),
-            attn_in=attn_in, attn_out=attn_out)
+            qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop) #, attn_out=attn_out)
+            #pretrained_window_size=to_2tuple(pretrained_window_size),
+            #attn_in=attn_in
+
 
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        #self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(dim=dim, drop_path=drop)
 
         if self.shift_size > 0:
             # calculate attention mask for SW-MSA
@@ -302,7 +254,7 @@ class SwinTransformerBlock(nn.Module):
         x_windows = x_windows.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
 
         # W-MSA/SW-MSA
-        attn_windows = self.attn(x_windows, mask=self.attn_mask, prev_attn=prev_attn)  # nW*B, window_size*window_size, C
+        attn_windows = self.attn(x_windows, mask=self.attn_mask) #, prev_attn=prev_attn)  # nW*B, window_size*window_size, C
         if self.attn_out and type(attn_windows) == tuple:
             attn_before_softmax = attn_windows[1]
             attn_windows = attn_windows[0]
@@ -320,7 +272,10 @@ class SwinTransformerBlock(nn.Module):
         x = shortcut + self.drop_path(self.norm1(x))
 
         # FFN
-        x = x + self.drop_path(self.norm2(self.mlp(x)))
+        x = x.view(B, H, W, C)
+        x = self.mlp(x)
+        x = x.view(B, H * W, C)
+        #x = x + self.drop_path(self.norm2(self.mlp(x)))
         
         if self.attn_out:
             x = (x, attn_before_softmax)
