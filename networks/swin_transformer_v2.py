@@ -26,22 +26,21 @@ class Mlp(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
     def forward(self, x):
-
-        input = x  # B, H, W, C
-        print("Input________________shape:", x.shape)
-        x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
-        x = self.dwconv(x)
-        x = x.permute(0, 2, 3, 1)
-        x = self.norm(x)
-        x = x.permute(0, 3, 1, 2)
-        x = self.pwconv1(x)
-        x = self.act(x)
-        x = self.pwconv2(x)
-        x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
-        if self.gamma is not None:
-            x = self.gamma * x
-        x = input + self.drop_path(x)  # (N, H, W, C)
-        return x
+      input = x  # B, H, W, C
+      print("Input________________shape:", x.shape)
+      x = x.permute(0, 3, 1, 2)  # (N, H, W, C) -> (N, C, H, W)
+      x = self.dwconv(x)
+      x = x.permute(0, 2, 3, 1)
+      x = self.norm(x)
+      x = x.permute(0, 3, 1, 2)
+      x = self.pwconv1(x)
+      x = self.act(x)
+      x = self.pwconv2(x)
+      x = x.permute(0, 2, 3, 1)  # (N, C, H, W) -> (N, H, W, C)
+      if self.gamma is not None:
+        x = self.gamma * x
+      x = input + self.drop_path(x)  # (N, H, W, C)
+      return x
 
 
 def window_partition(x, window_size):
@@ -75,7 +74,7 @@ def window_reverse(windows, window_size, H, W):
 
 
 class WindowAttention(nn.Module):
-    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+    """ Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
     Args:
         dim (int): Number of input channels.
