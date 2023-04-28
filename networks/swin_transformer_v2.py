@@ -177,7 +177,7 @@ class SwinTransformerBlock(nn.Module):
     """
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
-                 mlp_ratio=4., qkv_bias=True, drop=0., attn_drop=0., drop_path=0.,
+                 mlp_ratio=4., qkv_bias=True, drop=0., attn_drop=0., drop_path=0., qk_scale=None,
                  act_layer=nn.GELU, norm_layer=nn.LayerNorm, pretrained_window_size=0,
                  attn_in=False, attn_out=False):
         super().__init__()
@@ -198,7 +198,7 @@ class SwinTransformerBlock(nn.Module):
         
         self.norm1 = norm_layer(dim)
         self.attn = WindowAttention(
-            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads,
+            dim, window_size=to_2tuple(self.window_size), num_heads=num_heads, qk_scale=qk_scale,
             qkv_bias=qkv_bias, attn_drop=attn_drop, proj_drop=drop) #, attn_out=attn_out)
             #pretrained_window_size=to_2tuple(pretrained_window_size),
             #attn_in=attn_in
@@ -241,6 +241,7 @@ class SwinTransformerBlock(nn.Module):
         assert L == H * W, "input feature has wrong size"
 
         shortcut = x
+        x = self.norm1(x)
         x = x.view(B, H, W, C)
 
         # cyclic shift
@@ -489,7 +490,7 @@ class BasicLayer_up(nn.Module):
 
         # build blocks
         self.blocks = nn.ModuleList([
-            ConvSwinTransformerBlock(dim=dim, input_resolution=input_resolution,
+            SwinTransformerBlock(dim=dim, input_resolution=input_resolution,
                                  num_heads=num_heads, window_size=window_size,
                                  shift_size=0 if (i % 2 == 0) else window_size // 2,
                                  mlp_ratio=mlp_ratio,
@@ -501,7 +502,7 @@ class BasicLayer_up(nn.Module):
 
         # patch merging layer
         if upsample is not None:
-            self.upsample = PatchExpand(input_resolution, dim=dim, dim_scale=2, norm_layer=norm_layer)
+            self.upsample = PatchExpanding(input_resolution, dim=dim, dim_scale=2, norm_layer=norm_layer)
         else:
             self.upsample = None
 
