@@ -176,7 +176,7 @@ class WindowAttention(nn.Module):
 
 """
 class WindowAttention(nn.Module):
-    r""" Window based multi-head self attention (W-MSA) module with relative position bias.
+     Window based multi-head self attention (W-MSA) module with relative position bias.
     It supports both of shifted and non-shifted window.
 
     Args:
@@ -187,7 +187,7 @@ class WindowAttention(nn.Module):
         attn_drop (float, optional): Dropout ratio of attention weight. Default: 0.0
         proj_drop (float, optional): Dropout ratio of output. Default: 0.0
         pretrained_window_size (tuple[int]): The height and width of the window in pre-training.
-    """
+    
 
     def __init__(self, dim, window_size, num_heads, qkv_bias=True, attn_drop=0., proj_drop=0.,
                  pretrained_window_size=[0, 0], attn_in=False, attn_out=False):
@@ -254,11 +254,11 @@ class WindowAttention(nn.Module):
             self.lambda_attn = torch.nn.Parameter(torch.Tensor([0.25]))
 
     def forward(self, x, mask=None, prev_attn=None):
-        """
+        
         Args:
             x: input features with shape of (num_windows*B, N, C)
             mask: (0/-inf) mask with shape of (num_windows, Wh*Ww, Wh*Ww) or None
-        """
+        
         B_, N, C = x.shape
         qkv_bias = None
         if self.q_bias is not None:
@@ -318,7 +318,8 @@ class WindowAttention(nn.Module):
         # x = self.proj(x)
         flops += N * self.dim * self.dim
         return flops
-
+"""
+        
 class ConvSwinTransformerBlock(nn.Module):
     r""" Conv Swin Transformer Block.
     Args:
@@ -430,7 +431,7 @@ class ConvSwinTransformerBlock(nn.Module):
                f"window_size={self.window_size}, shift_size={self.shift_size}, mlp_ratio={self.mlp_ratio}"
 """
 class SwinTransformerBlock(nn.Module):
-    r""" Swin Transformer Block.
+     Swin Transformer Block.
 
     Args:
         dim (int): Number of input channels.
@@ -446,7 +447,7 @@ class SwinTransformerBlock(nn.Module):
         act_layer (nn.Module, optional): Activation layer. Default: nn.GELU
         norm_layer (nn.Module, optional): Normalization layer.  Default: nn.LayerNorm
         pretrained_window_size (int): Window size in pre-training.
-    """
+    
 
     def __init__(self, dim, input_resolution, num_heads, window_size=7, shift_size=0,
                  mlp_ratio=4., qkv_bias=True, drop=0., attn_drop=0., drop_path=0.,
